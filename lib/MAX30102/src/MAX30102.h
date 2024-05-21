@@ -14,7 +14,11 @@
 class MAX30102 {
  public: 
   MAX30102(void);
-
+  void readfirstsamples(bool ppgflag, int32_t bufferLength,
+  uint32_t *pun_ir_buffer, uint32_t *pun_red_buffer, int32_t *pn_spo2, 
+  int8_t *pch_spo2_valid, int32_t *pn_heart_rate, int8_t *pch_hr_valid);
+  
+  void readsensordata(int32_t bufferLength, uint32_t *pun_ir_buffer, uint32_t *pun_red_buffer,byte *i);
   boolean begin(TwoWire &wirePort = Wire, uint32_t i2cSpeed = I2C_SPEED_STANDARD, uint8_t i2caddr = MAX30102_ADDRESS);
 
   uint32_t getRed(void); //Returns immediate red value

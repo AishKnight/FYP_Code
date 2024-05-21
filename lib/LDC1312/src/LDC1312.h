@@ -31,7 +31,7 @@ public:
 	// Recommended to use resetLDC() and a small delay before calling this function.
 	//------------------------------------------------------------------------------------------
 	void LDC_setRecommendedSettings(int channel);
-
+	void LDC_setSettingsknitted (int channel);
 	//------------------------------------------------------------------------------------------
 	// Reads and returns the contents of a register.
 	// Not all registers are readable, and some registers are changed when they're read.

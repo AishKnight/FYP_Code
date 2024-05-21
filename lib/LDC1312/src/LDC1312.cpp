@@ -891,3 +891,26 @@ uint16_t LDC131X::LDC_getInitialDriveCurrent(int channel)
 {
     return (LDC_readDriveCurrent(channel) >> 6) & 0x001F; //shift right 6 bits and & w/ 0000 0000 0001 1111
 }
+
+void LDC131X::LDC_setSettingsknitted(int channel)
+{
+    uint8_t rcount_address = 0;
+    uint8_t settlecount_address = 0;
+    uint8_t clockdividers_address = 0;
+    uint8_t drivecurrent_address = 0;
+    uint16_t config_code = 0;
+
+    //configure settings
+    LDC_resetLDC();
+    delay(500);
+    LDC_setConfig(0x2801);
+    LDC_setClockDividers(channel,0x1002);
+    LDC_setConversionTime(channel, 0x04D6); // RCOUNT
+    LDC_setSettleTime(channel, 0x000A); // SETTLECOUNT
+    LDC_setGain(1); //Gain for all channels
+    LDC_setOffset(channel,0x0000); // offset for channel 0
+    LDC_setConfig(0x1801);
+    delay(500);
+
+    
+}

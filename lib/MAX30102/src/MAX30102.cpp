@@ -1,5 +1,5 @@
 #include "MAX30102.h"
-
+#include "spo2_algorithm.h"
 
 
 // Status Registers
@@ -140,6 +140,22 @@ struct Record
 
 MAX30102::MAX30102() {
   // Constructor
+}
+
+void MAX30102::readfirstsamples(bool ppgflag, int32_t bufferLength, uint32_t *pun_ir_buffer, uint32_t *pun_red_buffer, int32_t *pn_spo2, int8_t *pch_spo2_valid, int32_t *pn_heart_rate, int8_t *pch_hr_valid){
+  if(ppgflag){
+     for (byte i = 0 ; i < bufferLength ; i++)
+  {
+    while (available() == false) //do we have new data?
+      check(); //Check the sensor for new data
+
+    pun_red_buffer[i] = getRed();
+    pun_ir_buffer[i] = getIR();
+    nextSample(); //We're finished with this sample so move to next sample
+
+  }
+  maxim_heart_rate_and_oxygen_saturation(pun_ir_buffer,bufferLength,pun_red_buffer,pn_spo2,pch_spo2_valid,pn_heart_rate,pch_hr_valid);
+  }
 }
 
 boolean MAX30102::begin(TwoWire &wirePort, uint32_t i2cSpeed, uint8_t i2caddr) {
@@ -749,4 +765,26 @@ void MAX30102::writeRegister8(uint8_t address, uint8_t reg, uint8_t value) {
   _i2cPort->write(reg);
   _i2cPort->write(value);
   _i2cPort->endTransmission();
+}
+
+void MAX30102::readsensordata(int32_t bufferLength, uint32_t *pun_ir_buffer, uint32_t *pun_red_buffer,byte *i){
+      for (*i = 25; *i < bufferLength; (*i)++)
+    {
+      pun_red_buffer[*i - 25] = pun_red_buffer[*i];
+      pun_ir_buffer[*i - 25] = pun_ir_buffer[*i];
+    }
+
+    //take 25 sets of samples before calculating the heart rate.
+    for (*i = 75; *i < bufferLength; *i++)
+    {
+      while (available() == false) //do we have new data?
+        check(); //Check the sensor for new data
+
+      //digitalWrite(readLED, !digitalRead(readLED)); //Blink onboard LED with every data read
+
+      pun_red_buffer[*i] = getRed();
+      pun_ir_buffer[*i] = getIR();
+      nextSample(); //We're finished with this sample so move to next sample
+      
+    }
 }
