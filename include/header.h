@@ -18,12 +18,12 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
+//#include <ArduinoBLE.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 
-//BLE libraries
-//#include <BLEDevice.h>
-//#include <BLEServer.h>
-//#include <BLEUtils.h>
-//#include <BLE2902.h>
 
 
 

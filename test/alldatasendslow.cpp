@@ -158,7 +158,7 @@ void setup() {
   byte ledBrightness = 60; //Options: 0=Off to 255=50mA
   byte sampleAverage = 4; //Options: 1, 2, 4, 8, 16, 32
   byte ledMode = 2; //Options: 1 = Red only, 2 = Red + IR, 3 = Red + IR + Green
-  int sampleRate = 800; //Options: 50, 100, 200, 400, 800, 1000, 1600, 3200
+  byte sampleRate = 100; //Options: 50, 100, 200, 400, 800, 1000, 1600, 3200
   int pulseWidth = 411; //Options: 69, 118, 215, 411
   int adcRange = 4096; //Options: 2048, 4096, 8192, 16384
 
@@ -192,67 +192,58 @@ void loop() {
   }
 
   //Temperature readout
-// 0x48 is I2C address of TMP102
+  temperature = Tempsensor.SensorRead(0x48); // 0x48 is I2C address of TMP102
   //Serial.println ("Temperature: ");
   //Serial.println(temperature);
  
   //PPG readout
   PPGsensor.readfirstsamples(PPGfirstsamples,bufferLength,irBuffer,redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
   PPGfirstsamples = false;
-  // PPGsensor.readsensordata(bufferLength,irBuffer,redBuffer,&index_ir);
-   for (byte i = 25; i < 100; i++)
-    {
-      redBuffer[i - 25] = redBuffer[i];
-      irBuffer[i - 25] = irBuffer[i];
-    }
-  for (byte i = 75; i < 100; i++)
-    {
-      while (PPGsensor.available() == false) //do we have new data?
-      PPGsensor.check(); //Check the sensor for new data
-      redBuffer[i] =  PPGsensor.getRed();
-      irBuffer[i] =  PPGsensor.getIR();
-      PPGsensor.nextSample(); //We're finished with this sample so move to next sample
-      temperature = Tempsensor.SensorRead(0x48); 
-      data0 = Respsensor.LDC_readData(0);
-      data0 = data0 & 0x0FFF;
-      fsensor0 = (data0 * 43500000)/(65536); 
-    if (deviceConnected) {
-      pTemperatureCharacteristic->setValue (temperature);
-      pTemperatureCharacteristic->notify();
-      pIRCharacteristic->setValue (irBuffer[i]);
-      pIRCharacteristic->notify();
-      //Serial.println(irBuffer[i], DEC);
-      pREDCharacteristic->setValue (redBuffer[i]);
-      pREDCharacteristic->notify();
-      pRESPCharacteristic->setValue (fsensor0);
-      pRESPCharacteristic->notify();
-      //Serial.println("data is sent");
-    }
-      ads1292OutputValues ecgRespirationValues;
-      boolean ret = ECGsensor.getAds1292EcgAndRespirationSamples(ADS1292_DRDY_PIN,ADS1292_CS_PIN,&ecgRespirationValues);
-      if (ret == true)
-      {
-        ecgWaveBuff = (int16_t)(ecgRespirationValues.sDaqVals[1] >> 8) ;  // ignore the lower 8 bits out of 24bits
-
-        if(ecgRespirationValues.leadoffDetected == false)
-        {
-          ECG_ALGORITHM.ECG_ProcessCurrSample(&ecgWaveBuff, &ecgFilterout);   // filter out the line noise @40Hz cutoff 161 order
-        }else{
-          ecgFilterout = 0;
-          respFilterout = 0;
-        }
-      Serial.println(ecgWaveBuff);
-      uint8_t ecgtemp[2];
-      ecgtemp[0] = ecgWaveBuff;
-      ecgtemp[1] = ecgWaveBuff >> 8;
-      pECGCharacteristic->setValue (ecgtemp,2);
-      pECGCharacteristic->notify();
-      }
-  }
+  PPGsensor.readsensordata(bufferLength,irBuffer,redBuffer,&index_ir);
   maxim_heart_rate_and_oxygen_saturation(irBuffer, bufferLength, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
   
-  
+  //Respiration readout
+  data0 = Respsensor.LDC_readData(0);
+  data0 = data0 & 0x0FFF;
+  //fsensor0 = (data * 43500000)/(4096);
+  fsensor0 = (data0 * 43500000)/(65536); 
+  //Serial.print("Read frequency: ");
+  //Serial.println(fsensor0);
+
+  //ECG readout
+  ads1292OutputValues ecgRespirationValues;
+  boolean ret = ECGsensor.getAds1292EcgAndRespirationSamples(ADS1292_DRDY_PIN,ADS1292_CS_PIN,&ecgRespirationValues);
+  if (ret == true)
+  {
+    ecgWaveBuff = (int16_t)(ecgRespirationValues.sDaqVals[1] >> 8) ;  // ignore the lower 8 bits out of 24bits
+
+    if(ecgRespirationValues.leadoffDetected == false)
+    {
+      ECG_ALGORITHM.ECG_ProcessCurrSample(&ecgWaveBuff, &ecgFilterout);   // filter out the line noise @40Hz cutoff 161 order
+    }else{
+      ecgFilterout = 0;
+      respFilterout = 0;
+    }
+  }
+
   //Set value of all characteristics
+  if (deviceConnected) {
+    pTemperatureCharacteristic->setValue (temperature);
+    pTemperatureCharacteristic->notify();
+    pIRCharacteristic->setValue (irBuffer[index_ir]);
+    pIRCharacteristic->notify();
+    pREDCharacteristic->setValue (redBuffer[index_ir]);
+    pREDCharacteristic->notify();
+    pRESPCharacteristic->setValue (fsensor0);
+    pRESPCharacteristic->notify();
+    uint8_t ecgtemp[2];
+    ecgtemp[0] = ecgFilterout;
+    ecgtemp[1] = ecgFilterout >> 8;
+    pECGCharacteristic->setValue (ecgtemp,2);
+    pECGCharacteristic->notify();
+    Serial.println("data is sent");
+  }
+  
 }
 
 
