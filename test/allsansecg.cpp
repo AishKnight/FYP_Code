@@ -30,14 +30,12 @@ bool deviceConnected = false;
 #define RED_CHARACTERISTICS_UUID_TX "cd06f064-2738-4288-8f71-803cdc477dc5"
 #define RESP_CHARACTERISTICS_UUID_TX "e6530d8f-8bb8-4f2e-b511-347d67af1f75"
 #define ECG_CHARACTERISTICS_UUID_TX "fbb31c84-4a34-40c9-bbb8-64366848f400"
-#define FLAG_CHARACTERISTICS_UUID_TX "9763c033-530b-4103-846d-cf294e9a5e95"
 
 BLECharacteristic *pTemperatureCharacteristic;
 BLECharacteristic *pIRCharacteristic;
 BLECharacteristic *pREDCharacteristic;
 BLECharacteristic *pRESPCharacteristic;
 BLECharacteristic *pECGCharacteristic;
-BLECharacteristic *pFLAGCharacteristic;
 
 
 //Make class for server callback
@@ -91,10 +89,6 @@ int16_t resWaveBuff,respFilterout;
 ads1292r ECGsensor;
 ecg_respiration_algorithm ECG_ALGORITHM;
 
-//Flag
-double flag = 1;
-double counter = 0;
-double ecgcounter = 750;
 void setup() {
   //BLE setup
   BLEDevice::init ("Aish's ESP32");
@@ -127,10 +121,6 @@ void setup() {
     pECGCharacteristic = pService->createCharacteristic(
                       ECG_CHARACTERISTICS_UUID_TX,
                       BLECharacteristic:: PROPERTY_NOTIFY
-                    ); 
-    pFLAGCharacteristic = pService->createCharacteristic(
-                      FLAG_CHARACTERISTICS_UUID_TX,
-                      BLECharacteristic:: PROPERTY_NOTIFY
                     );
       //BLE2902 needed to notify
   pTemperatureCharacteristic->addDescriptor (new BLE2902());
@@ -138,7 +128,6 @@ void setup() {
   pREDCharacteristic->addDescriptor (new BLE2902());
   pRESPCharacteristic->addDescriptor (new BLE2902());
   pECGCharacteristic->addDescriptor (new BLE2902());
-  pFLAGCharacteristic->addDescriptor (new BLE2902());
   
   // Start the service
   pService -> start();
@@ -169,7 +158,7 @@ void setup() {
   byte ledBrightness = 60; //Options: 0=Off to 255=50mA
   byte sampleAverage = 4; //Options: 1, 2, 4, 8, 16, 32
   byte ledMode = 2; //Options: 1 = Red only, 2 = Red + IR, 3 = Red + IR + Green
-  int sampleRate = 800; //Options: 50, 100, 200, 400, 800, 1000, 1600, 3200
+  int sampleRate = 1000; //Options: 50, 100, 200, 400, 800, 1000, 1600, 3200
   int pulseWidth = 411; //Options: 69, 118, 215, 411
   int adcRange = 4096; //Options: 2048, 4096, 8192, 16384
 
@@ -201,97 +190,99 @@ void loop() {
   else{
     Serial.println ("Waiting for BLE connection");
   }
-  rp_overdrive = Respsensor.LDC_isCurrentOverrideEnabled(0x1C01);
-  Respsensor.LDC_setDriveCurrent(0, 0x8000);
-  while (counter < 750)
-  {
-    //PPG readout
-    PPGsensor.readfirstsamples(PPGfirstsamples,bufferLength,irBuffer,redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
-    PPGfirstsamples = false;
-    // PPGsensor.readsensordata(bufferLength,irBuffer,redBuffer,&index_ir);
-    for (byte i = 25; i < 100; i++)
+
+  //Temperature readout
+// 0x48 is I2C address of TMP102
+  //Serial.println ("Temperature: ");
+  //Serial.println(temperature);
+ 
+  //PPG readout
+  PPGsensor.readfirstsamples(PPGfirstsamples,bufferLength,irBuffer,redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
+  PPGfirstsamples = false;
+  // PPGsensor.readsensordata(bufferLength,irBuffer,redBuffer,&index_ir);
+   for (byte i = 25; i < 100; i++)
     {
-        redBuffer[i - 25] = redBuffer[i];
-        irBuffer[i - 25] = irBuffer[i];
+      redBuffer[i - 25] = redBuffer[i];
+      irBuffer[i - 25] = irBuffer[i];
     }
-    for (byte i = 75; i < 100; i++)
+  for (byte i = 75; i < 100; i++)
     {
-      //PPG
-      while (PPGsensor.available() == false) 
-      PPGsensor.check(); 
+      while (PPGsensor.available() == false) //do we have new data?
+      PPGsensor.check(); //Check the sensor for new data
       redBuffer[i] =  PPGsensor.getRed();
       irBuffer[i] =  PPGsensor.getIR();
-      PPGsensor.nextSample(); 
-      //Temperature
+      PPGsensor.nextSample(); //We're finished with this sample so move to next sample
       temperature = Tempsensor.SensorRead(0x48); 
-
-      //Coil 1
       data0 = Respsensor.LDC_readData(0);
       data0 = data0 & 0x0FFF;
       fsensor0 = (data0 * 43500000)/(65536); 
-      counter++;
-      //Coil 2
-      
-      //Bluetooth
-      if (deviceConnected) 
-      {
-        pFLAGCharacteristic->setValue (flag);
-        pFLAGCharacteristic->notify();
-        pTemperatureCharacteristic->setValue (temperature);
-        pTemperatureCharacteristic->notify();
-        pIRCharacteristic->setValue (irBuffer[i]);
-        pIRCharacteristic->notify();
-        //Serial.println(irBuffer[i], DEC);
-        pREDCharacteristic->setValue (redBuffer[i]);
-        pREDCharacteristic->notify();
-        pRESPCharacteristic->setValue (fsensor0);
-        pRESPCharacteristic->notify();
-      }
-       
+    if (deviceConnected) {
+      pTemperatureCharacteristic->setValue (temperature);
+      pTemperatureCharacteristic->notify();
+      pIRCharacteristic->setValue (irBuffer[i]);
+      pIRCharacteristic->notify();
+      //Serial.println(irBuffer[i], DEC);
+      pREDCharacteristic->setValue (redBuffer[i]);
+      pREDCharacteristic->notify();
+      pRESPCharacteristic->setValue (fsensor0);
+      pRESPCharacteristic->notify();
+      //Serial.println("data is sent");
     }
-    maxim_heart_rate_and_oxygen_saturation(irBuffer, bufferLength, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
-  }
-  ecgcounter = 0;
-  flag = 0;
-  
-  while(ecgcounter < 750)
-  {
-    ads1292OutputValues ecgRespirationValues;
-
-    boolean ret = ECGsensor.getAds1292EcgAndRespirationSamples(ADS1292_DRDY_PIN,ADS1292_CS_PIN,&ecgRespirationValues);
-    if (ret == true)
-    {
-      ecgWaveBuff = (int16_t)(ecgRespirationValues.sDaqVals[1] >> 8) ;  // ignore the lower 8 bits out of 24bits
-      resWaveBuff = (int16_t)(ecgRespirationValues.sresultTempResp>>8) ;
-
-      if(ecgRespirationValues.leadoffDetected == false)
+      ads1292OutputValues ecgRespirationValues;
+      boolean ret = ECGsensor.getAds1292EcgAndRespirationSamples(ADS1292_DRDY_PIN,ADS1292_CS_PIN,&ecgRespirationValues);
+      Serial.println("ECG being sampled?");
+      Serial.println(ret);
+      if (ret == true)
       {
-        ECG_ALGORITHM.ECG_ProcessCurrSample(&ecgWaveBuff, &ecgFilterout);   // filter out the line noise @40Hz cutoff 161 order
-        ECG_ALGORITHM.QRS_Algorithm_Interface(ecgFilterout,&globalHeartRate); // calculate
+        ecgWaveBuff = (int16_t)(ecgRespirationValues.sDaqVals[1] >> 8) ;  // ignore the lower 8 bits out of 24bits
 
-      }
-      else{
-        ecgFilterout = 0;
-        respFilterout = 0;
-      }
+        if(ecgRespirationValues.leadoffDetected == false)
+        {
+          ECG_ALGORITHM.ECG_ProcessCurrSample(&ecgWaveBuff, &ecgFilterout);   // filter out the line noise @40Hz cutoff 161 order
+        }else{
+          ecgFilterout = 0;
+          respFilterout = 0;
+        }
       Serial.println(ecgFilterout);
-      
-      if (deviceConnected){
-        pFLAGCharacteristic->setValue (flag);
-        pFLAGCharacteristic->notify();
-        uint8_t ecgtemp[2];
-        ecgtemp[0] = ecgFilterout;
-        ecgtemp[1] = ecgFilterout >> 8;
-        pECGCharacteristic->setValue (ecgtemp,2);
-        pECGCharacteristic->notify();
-        Serial.println("data is sent");
-        ecgcounter++;
+      uint8_t ecgtemp[2];
+      ecgtemp[0] = ecgFilterout;
+      ecgtemp[1] = ecgFilterout >> 8;
+      pECGCharacteristic->setValue (ecgtemp,2);
+      pECGCharacteristic->notify();
       }
-    }
   }
-  counter = 0;
-  flag = 1;
-}
+  maxim_heart_rate_and_oxygen_saturation(irBuffer, bufferLength, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
   
+  
+  //Set value of all characteristics
+}
 
+
+
+  
+  //Serial.print(F("index_ir="));
+  //Serial.print(index_ir, DEC);
+  //Serial.print(F("red="));
+  //Serial.print(redBuffer[index_ir], DEC);
+  //Serial.print(F(", ir="));
+  //Serial.println(irBuffer[index_ir], DEC);
+  //Serial.print(F(", HR="));
+  //Serial.print(heartRate, DEC);
+  //Serial.print(F(", HRvalid="));
+  //Serial.print(validHeartRate, DEC);
+  //Serial.print(F(", SPO2="));
+  //Serial.print(spo2, DEC);
+  //Serial.print(F(", SPO2Valid="));
+  //Serial.println(validSPO2, DEC);
+  // if (central) {
+  // temperatureChar.writeValue(temperature); 
+  // IRChar.writeValue(irBuffer[index_ir]); 
+  // RedChar.writeValue(redBuffer[index_ir]); 
+  // RespChar.writeValue(fsensor0);
+  // ECGChar.writeValue(ecgFilterout);
+
+  // delay(100);
+  // }
+  // else{
+  // Serial.print("Disconnected from central: ");
 
