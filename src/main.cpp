@@ -28,14 +28,16 @@ bool deviceConnected = false;
 #define TEMP_CHARACTERISTICS_UUID_TX "b6f56b47-272b-45d6-8e3d-fb0e5687cdff"
 #define IR_CHARACTERISTICS_UUID_TX "02f3a6f2-6095-4d7a-a7d0-f2c471fecb0e"
 #define RED_CHARACTERISTICS_UUID_TX "cd06f064-2738-4288-8f71-803cdc477dc5"
-#define RESP_CHARACTERISTICS_UUID_TX "e6530d8f-8bb8-4f2e-b511-347d67af1f75"
+#define COIL1_CHARACTERISTICS_UUID_TX "e6530d8f-8bb8-4f2e-b511-347d67af1f75"
+#define COIL2_CHARACTERISTICS_UUID_TX "18055d48-da50-4b74-abb6-4e6b613f2898"
 #define ECG_CHARACTERISTICS_UUID_TX "fbb31c84-4a34-40c9-bbb8-64366848f400"
 #define FLAG_CHARACTERISTICS_UUID_TX "9763c033-530b-4103-846d-cf294e9a5e95"
 
 BLECharacteristic *pTemperatureCharacteristic;
 BLECharacteristic *pIRCharacteristic;
 BLECharacteristic *pREDCharacteristic;
-BLECharacteristic *pRESPCharacteristic;
+BLECharacteristic *pCOIL1_Characteristic;
+BLECharacteristic *pCOIL2_Characteristic;
 BLECharacteristic *pECGCharacteristic;
 BLECharacteristic *pFLAGCharacteristic;
 
@@ -75,12 +77,12 @@ int8_t validHeartRate; //indicator to show if the heart rate calculation is vali
 MAX30102 PPGsensor;
 
 //Respiration global variables
-uint16_t initialcurrent;
+uint16_t initialcurrent0, initialcurrent1;
 uint16_t channel;
 bool rp_overdrive;
 uint16_t readcurrent;
-uint16_t data0;
-uint16_t fsensor0;
+uint16_t data0, data1;
+uint16_t fsensor0, fsensor1;
 LDC131X Respsensor(true); // true means using 0x2B
 
 //ECG global variables
@@ -94,7 +96,7 @@ ecg_respiration_algorithm ECG_ALGORITHM;
 //Flag
 double flag = 1;
 double counter = 0;
-double ecgcounter = 750;
+double ecgcounter = 3000;
 void setup() {
   //BLE setup
   BLEDevice::init ("Aish's ESP32");
@@ -120,8 +122,12 @@ void setup() {
                       RED_CHARACTERISTICS_UUID_TX,
                       BLECharacteristic:: PROPERTY_NOTIFY
                     );
-    pRESPCharacteristic = pService->createCharacteristic(
-                      RESP_CHARACTERISTICS_UUID_TX,
+    pCOIL1_Characteristic = pService->createCharacteristic(
+                      COIL1_CHARACTERISTICS_UUID_TX,
+                      BLECharacteristic:: PROPERTY_NOTIFY
+                    );
+    pCOIL2_Characteristic = pService->createCharacteristic(
+                      COIL2_CHARACTERISTICS_UUID_TX,
                       BLECharacteristic:: PROPERTY_NOTIFY
                     );
     pECGCharacteristic = pService->createCharacteristic(
@@ -136,7 +142,8 @@ void setup() {
   pTemperatureCharacteristic->addDescriptor (new BLE2902());
   pIRCharacteristic->addDescriptor (new BLE2902());
   pREDCharacteristic->addDescriptor (new BLE2902());
-  pRESPCharacteristic->addDescriptor (new BLE2902());
+  pCOIL1_Characteristic->addDescriptor (new BLE2902());
+  pCOIL2_Characteristic->addDescriptor (new BLE2902());
   pECGCharacteristic->addDescriptor (new BLE2902());
   pFLAGCharacteristic->addDescriptor (new BLE2902());
   
@@ -155,10 +162,13 @@ void setup() {
   //Respiration sensor setup function
   pinMode(CS, OUTPUT);
   digitalWrite(CS, LOW); 
-  Respsensor.LDC_setSettingsknitted(0);
-  initialcurrent = Respsensor.LDC_getInitialDriveCurrent(0);
-  Serial.print("My initial current is: ");
-  Serial.println(initialcurrent);
+  Respsensor.LDC_setSettingsknitted();
+  initialcurrent0 = Respsensor.LDC_getInitialDriveCurrent(0);
+  initialcurrent1 = Respsensor.LDC_getInitialDriveCurrent(1);
+  Serial.print("My initial current0 is: ");
+  Serial.println(initialcurrent0);
+  Serial.print("My initial current1 is: ");
+  Serial.println(initialcurrent1);
 
   //PPG sensor initialisation
   if (!PPGsensor.begin(Wire, I2C_SPEED_FAST)) //Use default I2C port, 400kHz speed
@@ -203,7 +213,9 @@ void loop() {
   }
   rp_overdrive = Respsensor.LDC_isCurrentOverrideEnabled(0x1C01);
   Respsensor.LDC_setDriveCurrent(0, 0x8000);
-  while (counter < 750)
+  Respsensor.LDC_setDriveCurrent(1, 0x8000);
+  if (deviceConnected){
+  while (counter < 1500)
   {
     //PPG readout
     PPGsensor.readfirstsamples(PPGfirstsamples,bufferLength,irBuffer,redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
@@ -229,12 +241,34 @@ void loop() {
       data0 = Respsensor.LDC_readData(0);
       data0 = data0 & 0x0FFF;
       fsensor0 = (data0 * 43500000)/(65536); 
-      counter++;
+   
       //Coil 2
-      
-      //Bluetooth
-      if (deviceConnected) 
+      data1 = Respsensor.LDC_readData(1);
+      data1 = data1 & 0x0FFF;
+      fsensor1= (data1 * 43500000)/(65536); 
+
+      ads1292OutputValues ecgRespirationValues;
+
+    boolean ret = ECGsensor.getAds1292EcgAndRespirationSamples(ADS1292_DRDY_PIN,ADS1292_CS_PIN,&ecgRespirationValues);
+    if (ret == true)
+    {
+      ecgWaveBuff = (int16_t)(ecgRespirationValues.sDaqVals[1] >> 8) ;  // ignore the lower 8 bits out of 24bits
+      resWaveBuff = (int16_t)(ecgRespirationValues.sresultTempResp>>8) ;
+
+      if(ecgRespirationValues.leadoffDetected == false)
       {
+        ECG_ALGORITHM.ECG_ProcessCurrSample(&ecgWaveBuff, &ecgFilterout);   // filter out the line noise @40Hz cutoff 161 order
+        ECG_ALGORITHM.QRS_Algorithm_Interface(ecgFilterout,&globalHeartRate); // calculate
+
+      }
+      else{
+        ecgFilterout = 0;
+        respFilterout = 0;
+      }
+    }
+
+      counter++;
+      //Bluetooth
         pFLAGCharacteristic->setValue (flag);
         pFLAGCharacteristic->notify();
         pTemperatureCharacteristic->setValue (temperature);
@@ -244,9 +278,10 @@ void loop() {
         //Serial.println(irBuffer[i], DEC);
         pREDCharacteristic->setValue (redBuffer[i]);
         pREDCharacteristic->notify();
-        pRESPCharacteristic->setValue (fsensor0);
-        pRESPCharacteristic->notify();
-      }
+        pCOIL1_Characteristic->setValue (fsensor0);
+        pCOIL1_Characteristic->notify();
+        pCOIL2_Characteristic->setValue (fsensor1);
+        pCOIL2_Characteristic->notify();
        
     }
     maxim_heart_rate_and_oxygen_saturation(irBuffer, bufferLength, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
@@ -254,7 +289,7 @@ void loop() {
   ecgcounter = 0;
   flag = 0;
   
-  while(ecgcounter < 750)
+  while(ecgcounter < 3000)
   {
     ads1292OutputValues ecgRespirationValues;
 
@@ -276,7 +311,6 @@ void loop() {
       }
       Serial.println(ecgFilterout);
       
-      if (deviceConnected){
         pFLAGCharacteristic->setValue (flag);
         pFLAGCharacteristic->notify();
         uint8_t ecgtemp[2];
@@ -286,11 +320,11 @@ void loop() {
         pECGCharacteristic->notify();
         Serial.println("data is sent");
         ecgcounter++;
-      }
     }
   }
   counter = 0;
   flag = 1;
+}
 }
   
 

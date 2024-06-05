@@ -892,7 +892,7 @@ uint16_t LDC131X::LDC_getInitialDriveCurrent(int channel)
     return (LDC_readDriveCurrent(channel) >> 6) & 0x001F; //shift right 6 bits and & w/ 0000 0000 0001 1111
 }
 
-void LDC131X::LDC_setSettingsknitted(int channel)
+void LDC131X::LDC_setSettingsknitted()
 {
     uint8_t rcount_address = 0;
     uint8_t settlecount_address = 0;
@@ -903,13 +903,21 @@ void LDC131X::LDC_setSettingsknitted(int channel)
     //configure settings
     LDC_resetLDC();
     delay(500);
+    LDC_setConfig(0x6801);
     LDC_setConfig(0x2801);
-    LDC_setClockDividers(channel,0x1002);
-    LDC_setConversionTime(channel, 0x04D6); // RCOUNT
-    LDC_setSettleTime(channel, 0x000A); // SETTLECOUNT
+    LDC_setClockDividers(1,0x1002);
+    LDC_setConversionTime(0, 0x04D6); // RCOUNT
+    LDC_setClockDividers(0,0x1002);
+    LDC_setConversionTime(1, 0x04D6);
+    LDC_setSettleTime(1, 0x000A); // SETTLECOUNT
+    LDC_setConversionTime(0, 0x04D6);
+    LDC_setSettleTime(0, 0x000A); // SETTLECOUNT
     LDC_setGain(1); //Gain for all channels
-    LDC_setOffset(channel,0x0000); // offset for channel 0
+    LDC_setOffset(1,0x0000); // offset for channel 0
+    LDC_setOffset(0,0x0000); // offset for channel 0
+    LDC_setConfig(0x4801);
     LDC_setConfig(0x1801);
+    LDC_setMUXConfig(0b1000001000001111);
     delay(500);
 
     
