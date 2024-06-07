@@ -1,7 +1,7 @@
 #include <header.h>
 
-unsigned long previousMillis = 0UL;
-unsigned long interval = 100UL;
+unsigned long ppgmillis = 0UL;
+unsigned long ecgmillis = 0UL;
 
 // //I2C pin definitions
 #define SDA_2 36
@@ -32,6 +32,7 @@ bool deviceConnected = false;
 #define COIL2_CHARACTERISTICS_UUID_TX "18055d48-da50-4b74-abb6-4e6b613f2898"
 #define ECG_CHARACTERISTICS_UUID_TX "fbb31c84-4a34-40c9-bbb8-64366848f400"
 #define FLAG_CHARACTERISTICS_UUID_TX "9763c033-530b-4103-846d-cf294e9a5e95"
+#define TIME_CHARACTERISTICS_UUID_TX "7a7e98c2-1f80-4fcb-974e-66546f21af03"
 
 BLECharacteristic *pTemperatureCharacteristic;
 BLECharacteristic *pIRCharacteristic;
@@ -40,6 +41,7 @@ BLECharacteristic *pCOIL1_Characteristic;
 BLECharacteristic *pCOIL2_Characteristic;
 BLECharacteristic *pECGCharacteristic;
 BLECharacteristic *pFLAGCharacteristic;
+BLECharacteristic *pTIMECharacteristic;
 
 
 //Make class for server callback
@@ -54,8 +56,8 @@ class MyServerCallbacks: public BLEServerCallbacks {
 
 };
 
-unsigned long lastTime = 0;
-unsigned long timerDelay = 10;
+// unsigned long lastTime = 0;
+// unsigned long timerDelay = 10;
 
 double txValue = 0;
 char sensorvals[20];
@@ -138,6 +140,10 @@ void setup() {
                       FLAG_CHARACTERISTICS_UUID_TX,
                       BLECharacteristic:: PROPERTY_NOTIFY
                     );
+    pTIMECharacteristic = pService->createCharacteristic(
+                      TIME_CHARACTERISTICS_UUID_TX,
+                      BLECharacteristic:: PROPERTY_NOTIFY
+                    );
       //BLE2902 needed to notify
   pTemperatureCharacteristic->addDescriptor (new BLE2902());
   pIRCharacteristic->addDescriptor (new BLE2902());
@@ -146,6 +152,7 @@ void setup() {
   pCOIL2_Characteristic->addDescriptor (new BLE2902());
   pECGCharacteristic->addDescriptor (new BLE2902());
   pFLAGCharacteristic->addDescriptor (new BLE2902());
+  pTIMECharacteristic->addDescriptor (new BLE2902());
   
   // Start the service
   pService -> start();
@@ -215,7 +222,7 @@ void loop() {
   Respsensor.LDC_setDriveCurrent(0, 0x8000);
   Respsensor.LDC_setDriveCurrent(1, 0x8000);
   if (deviceConnected){
-  while (counter < 1500)
+  while (counter < 8000)
   {
     //PPG readout
     PPGsensor.readfirstsamples(PPGfirstsamples,bufferLength,irBuffer,redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
@@ -269,8 +276,16 @@ void loop() {
 
       counter++;
       //Bluetooth
+        ppgmillis = millis();
+        uint8_t time[4];
+	      time[0] = ppgmillis;
+	      time[1] = ppgmillis >> 8;
+	      time[2] = ppgmillis >> 16;
+	      time[3] = ppgmillis >> 24;
         pFLAGCharacteristic->setValue (flag);
         pFLAGCharacteristic->notify();
+        pTIMECharacteristic->setValue (time, 4);
+        pTIMECharacteristic->notify();
         pTemperatureCharacteristic->setValue (temperature);
         pTemperatureCharacteristic->notify();
         pIRCharacteristic->setValue (irBuffer[i]);
@@ -309,17 +324,24 @@ void loop() {
         ecgFilterout = 0;
         respFilterout = 0;
       }
-      Serial.println(ecgFilterout);
-      
+        ecgcounter++;
+        Serial.println(ecgFilterout);
+        ecgmillis = millis ();
+        uint8_t time[4];
+	      time[0] = ecgmillis;
+	      time[1] = ecgmillis >> 8;
+	      time[2] = ecgmillis >> 16;
+	      time[3] = ecgmillis >> 24;
         pFLAGCharacteristic->setValue (flag);
         pFLAGCharacteristic->notify();
+        pTIMECharacteristic->setValue (time, 4);
+        pTIMECharacteristic->notify();
         uint8_t ecgtemp[2];
         ecgtemp[0] = ecgFilterout;
         ecgtemp[1] = ecgFilterout >> 8;
         pECGCharacteristic->setValue (ecgtemp,2);
         pECGCharacteristic->notify();
         Serial.println("data is sent");
-        ecgcounter++;
     }
   }
   counter = 0;
