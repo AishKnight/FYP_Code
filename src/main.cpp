@@ -98,7 +98,7 @@ ecg_respiration_algorithm ECG_ALGORITHM;
 //Flag
 double flag = 1;
 double counter = 0;
-double ecgcounter = 3000;
+double ecgcounter = 8000;
 void setup() {
   //BLE setup
   BLEDevice::init ("Aish's ESP32");
@@ -222,7 +222,7 @@ void loop() {
   Respsensor.LDC_setDriveCurrent(0, 0x8000);
   Respsensor.LDC_setDriveCurrent(1, 0x8000);
   if (deviceConnected){
-  while (counter < 8000)
+  while (counter < 2000)
   {
     //PPG readout
     PPGsensor.readfirstsamples(PPGfirstsamples,bufferLength,irBuffer,redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
@@ -304,7 +304,7 @@ void loop() {
   ecgcounter = 0;
   flag = 0;
   
-  while(ecgcounter < 3000)
+  while(ecgcounter < 8000)
   {
     ads1292OutputValues ecgRespirationValues;
 
